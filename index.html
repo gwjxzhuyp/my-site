@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>虚拟电厂 & 独立储能 政策索引 — 企业版</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>虚拟电厂（VPP） & 独立储能 政策索引（企业版）</h1>
+      <p class="tagline">按省/主题汇总官方文件、要点、准入/补偿/申报与并网要件；支持检索、筛选、导出与在线表单。</p>
+      <div class="controls">
+        <input id="searchInput" type="search" placeholder="搜索：省份 / 标题 / 关键字" />
+        <select id="filterProvince"><option value="">全部省份</option></select>
+        <select id="filterType"><option value="">全部类型</option><option value="vpp">虚拟电厂（VPP）</option><option value="storage">独立储能</option></select>
+        <button id="btnExportCsv">导出 CSV</button>
+        <button id="btnDownloadJson">下载 JSON</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="nav">
+    <div class="container">
+      <a href="#index">首页</a>
+      <a href="#templates">表单模板</a>
+      <a href="#submit">在线提交</a>
+      <a id="openAllBtn" href="javascript:void(0)">全部展开</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section id="summary" class="card">
+      <h2>页面说明</h2>
+      <p>本页面为企业级政策索引与操作页：聚合省级虚拟电厂（VPP）与独立储能政策原文/解读链接、关键要点与可直接使用的申报/备案/并网表单模板。使用顶部搜索与筛选可快速定位目标文件；点击“详情”查看完整摘要与来源并可复制原文链接。</p>
+    </section>
+
+    <section id="results" class="card">
+      <h2>政策检索结果</h2>
+      <div id="resultsCount" class="meta">加载中……</div>
+      <div id="list"></div>
+    </section>
+
+    <section id="templates" class="card">
+      <h2>可直接使用的表单模板</h2>
+      <div class="grid">
+        <div class="panel">
+          <h3>项目申报清单</h3>
+          <pre class="code" id="tpl-declare">项目名称：
+项目所在地（省/市/区）：
+项目类型（独立储能 / VPP）：
+装机功率（MW）：
+储能容量（MWh）：
+业主单位（公司/统一社会信用代码）：
+技术路线与主要设备：
+并网点 / 电压等级：
+计划投运时间：
+资金来源与商业模式：
+拟参与市场（现货/辅助/容量/需求响应）：
+附件：可研报告、并网方案、环评、设备合同、运维方案</pre>
+          <button class="btn small" onclick="copyText('tpl-declare')">复制模板</button>
+        </div>
+
+        <div class="panel">
+          <h3>备案材料清单</h3>
+          <pre class="code" id="tpl-record">营业执照复印件
+法定代表人身份证明
+项目建议书 / 可研报告
+技术并网方案与一次二次接线图
+环评报告或批复
+资金落实证明 / 银行承诺函
+安全与运维方案
+地方要求的其他材料</pre>
+          <button class="btn small" onclick="copyText('tpl-record')">复制模板</button>
+        </div>
+
+        <div class="panel">
+          <h3>市场准入申请模板</h3>
+          <pre class="code" id="tpl-market">申请单位：
+统一社会信用代码：
+联系人 / 电话 / 邮箱：
+申请类型：独立储能 / VPP 运营商 / 聚合方
+资质材料（营业执照、人员资质）：
+技术说明（EMS/SCADA、通信协议）：
+运行与应急保障：
+结算账户 / 保证金安排</pre>
+          <button class="btn small" onclick="copyText('tpl-market')">复制模板</button>
+        </div>
+
+        <div class="panel">
+          <h3>并网对接表</h3>
+          <pre class="code" id="tpl-grid">并网点名称：
+许可并网容量（MW）：
+接入电压等级：
+项目方联系人 / 电网方联系人：
+并网计划节点（设备到场 / 联调 / 并网投运）：
+通信协议（IEC61850 / Modbus / 其他）：
+实时数据项与上报频率：
+测试与验收清单</pre>
+          <button class="btn small" onclick="copyText('tpl-grid')">复制模板</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="submit" class="card">
+      <h2>在线项目提交流程（演示表单）</h2>
+      <form id="submitForm" class="form" onsubmit="handleSubmit(event)">
+        <label>项目名称<input name="projectName" required></label>
+        <label>省/市<select name="province" id="formProvince"><option value="">选择省份</option></select></label>
+        <label>项目类型<select name="projectType"><option value="vpp">VPP</option><option value="storage">独立储能</option></select></label>
+        <label>装机功率（MW）<input name="capacityMw" type="number" step="0.1"></label>
+        <label>储能容量（MWh）<input name="capacityMwh" type="number" step="0.1"></label>
+        <label>申报单位<input name="orgName" required></label>
+        <label>联系人<input name="contactName" required></label>
+        <label>联系电话<input name="contactPhone" required></label>
+        <label>可研/技术方案 链接<input name="docLink"></label>
+        <label>备注<textarea name="notes"></textarea></label>
+        <div class="actions">
+          <button type="submit">生成材料包（演示）</button>
+          <button type="button" id="btnPack">下载材料清单（ZIP）</button>
+        </div>
+      </form>
+      <div id="submitResult" class="form-result" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <!-- details modal -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="modal-inner">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>建议：将本站点放入仓库的 gh-pages 或 docs/ 目录并启用 GitHub Pages；需要我代为提交，请授权仓库访问。</p>
+      <p>© 政策索引 页面 · 自动生成</p>
+    </div>
+  </footer>
+
+  <script src="policies.json" type="application/json" id="policiesData"></script>
+  <script src="app.js"></script>
+</body>
+</html>
