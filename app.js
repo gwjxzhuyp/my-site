@@ -1,154 +1,214 @@
-// app.js - policies page behavior
-(function(){
-  // Load policies from embedded <script id="policiesData"> content or fallback to global variable `POLICIES`
-  function loadPolicies(){
+(async function () {
+  // loadPolicies: try embedded JSON element first, else fetch policies.json
+  async function loadPolicies() {
     const el = document.getElementById('policiesData');
-    if(el){
-      try{ return JSON.parse(el.textContent); } catch(e){ console.warn('policiesData parse fail', e); }
+    if (el) {
+      try {
+        const txt = (el.textContent || '').trim();
+        if (txt) return JSON.parse(txt);
+      } catch (e) {
+        console.warn('policiesData parse fail', e);
+      }
+    }
+    try {
+      const res = await fetch('policies.json', { cache: 'no-store' });
+      if (res.ok) return await res.json();
+      console.warn('fetch policies.json failed', res.status);
+    } catch (e) {
+      console.warn('fetch policies.json error', e);
     }
     return window.POLICIES || [];
   }
 
-  const policies = loadPolicies();
+  const policies = await loadPolicies();
   const listEl = document.getElementById('list');
   const countEl = document.getElementById('resultsCount');
   const searchInput = document.getElementById('searchInput');
   const filterProvince = document.getElementById('filterProvince');
   const filterType = document.getElementById('filterType');
   const formProvince = document.getElementById('formProvince');
+  const statCount = document.getElementById('statCount');
 
-  // populate province filters
-  const provinces = Array.from(new Set(policies.map(p=>p.provinceName).filter(Boolean))).sort();
-  provinces.forEach(p=>{
-    const o = document.createElement('option'); o.value = p; o.textContent = p;
-    filterProvince.appendChild(o);
-    const o2 = o.cloneNode(true); formProvince.appendChild(o2);
+  // populate province selects
+  const provinces = Array.from(new Set(policies.map(p => p.provinceName).filter(Boolean))).sort();
+  provinces.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p; o.textContent = p;
+    if (filterProvince) filterProvince.appendChild(o.cloneNode(true));
+    if (formProvince) formProvince.appendChild(o.cloneNode(true));
   });
 
-  function renderList(items){
+  function renderList(items) {
     listEl.innerHTML = '';
-    countEl.textContent = `共 ${items.length} 条匹配结果`;
-    if(!items.length){ listEl.innerHTML = '<p class="meta">未找到匹配项</p>'; return; }
-    items.forEach(item=>{
-      const card = document.createElement('div'); card.className = 'policy-card';
-      card.style.border = '1px solid #eef3ff';
-      card.style.padding = '12px'; card.style.marginBottom = '10px'; card.style.borderRadius='8px';
-      const h = document.createElement('h3'); h.textContent = `${item.provinceName} · ${item.title}`;
-      h.style.margin = '0 0 6px 0';
-      const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `${item.date || ''} · ${item.source || ''}`;
-      const excerpt = document.createElement('p'); excerpt.textContent = item.summary || ''; excerpt.className='note';
-      const actions = document.createElement('div'); actions.style.marginTop='8px';
-      const btnDetail = document.createElement('button'); btnDetail.className='btn small'; btnDetail.textContent='详情';
-      btnDetail.onclick = ()=>openModal(item);
-      const link = document.createElement('a'); link.href = item.url; link.target='_blank'; link.rel='noopener noreferrer';
-      link.textContent = '原文链接';
-      link.style.marginLeft='8px'; link.style.color='#0b5fff'; link.style.fontWeight=700;
-      actions.appendChild(btnDetail); actions.appendChild(link);
-      card.appendChild(h); card.appendChild(meta); card.appendChild(excerpt); card.appendChild(actions);
+    if (countEl) countEl.textContent = `共 ${items.length} 条匹配结果`;
+    if (statCount) statCount.textContent = String(items.length);
+    if (!items.length) {
+      listEl.innerHTML = '<div class="policy-card"><p class="meta">未找到匹配项，请调整筛选条件。</p></div>';
+      return;
+    }
+
+    items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'policy-card';
+      card.innerHTML = `
+        <h3>${item.provinceName} · ${item.title}</h3>
+        <div class="meta">${item.date || ''} · ${item.source || ''}</div>
+        <p>${item.summary || ''}</p>
+        <div class="actions">
+          <button class="btn small" type="button" data-detail='${encodeURIComponent(JSON.stringify(item))}'>详情</button>
+          <a href="${item.url}" target="_blank" rel="noopener noreferrer">原文链接</a>
+        </div>
+      `;
+      const detailBtn = card.querySelector('[data-detail]');
+      detailBtn.addEventListener('click', () => {
+        const payload = JSON.parse(decodeURIComponent(detailBtn.dataset.detail));
+        openModal(payload);
+      });
       listEl.appendChild(card);
     });
   }
 
-  function openModal(item){
-    const modal = document.getElementById('modal'); const content = document.getElementById('modalContent');
-    content.innerHTML = `<h2>${item.title}</h2>
+  function openModal(item) {
+    const modal = document.getElementById('modal');
+    const content = document.getElementById('modalContent');
+    if (!content || !modal) return;
+    content.innerHTML = `
+      <h2>${item.title}</h2>
       <p class="meta">${item.provinceName} · ${item.date || ''} · ${item.source || ''}</p>
       <p>${item.summary || ''}</p>
-      <p>原文： <a href="${item.url}" target="_blank">${item.url}</a></p>
-      <p><button class="btn" onclick="navigator.clipboard && navigator.clipboard.writeText('${item.url.replace(/'/g,"\\'")}')">复制链接</button>
-      <button class="btn" onclick="downloadPolicy(${JSON.stringify(JSON.stringify(item)).replace(/\"/g,"&quot;")})" style="margin-left:8px">下载 JSON</button></p>`;
-    modal.setAttribute('aria-hidden','false');
-  }
-  window.closeModal = function(){ document.getElementById('modal').setAttribute('aria-hidden','true'); }
-
-  function downloadPolicy(serialized){
-    try{
-      const item = JSON.parse(JSON.parse(serialized));
-      const blob = new Blob([JSON.stringify(item,null,2)],{type:'application/json'});
-      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = (item.title||'policy') + '.json';
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    }catch(e){ console.error(e); }
+      <p>原文： <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.url}</a></p>
+      <div class="actions">
+        <button class="primary" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText('${String(item.url).replace(/'/g, "\\'")}')">复制链接</button>
+        <button class="secondary" type="button" onclick="downloadPolicy(${JSON.stringify(JSON.stringify(item)).replace(/\"/g, '&quot;')})">下载 JSON</button>
+      </div>
+    `;
+    modal.setAttribute('aria-hidden', 'false');
   }
 
-  window.downloadPolicy = downloadPolicy;
+  function applyFilters() {
+    const q = (searchInput && searchInput.value || '').trim().toLowerCase();
+    const prov = filterProvince && filterProvince.value;
+    const type = filterType && filterType.value;
 
-  // search + filter
-  function applyFilters(){
-    const q = (searchInput.value||'').trim().toLowerCase();
-    const prov = filterProvince.value;
-    const type = filterType.value;
     let items = policies.slice();
-    if(prov) items = items.filter(i=>i.provinceName === prov);
-    if(type) items = items.filter(i=>i.type === type);
-    if(q){
-      items = items.filter(i=>{
-        return (i.title||'').toLowerCase().includes(q) ||
-               (i.summary||'').toLowerCase().includes(q) ||
-               (i.provinceName||'').toLowerCase().includes(q) ||
-               (i.source||'').toLowerCase().includes(q);
-      });
+    if (prov) items = items.filter(i => i.provinceName === prov);
+    if (type) items = items.filter(i => i.type === type);
+    if (q) {
+      items = items.filter(i => [i.title, i.summary, i.provinceName, i.source].join(' ').toLowerCase().includes(q));
     }
     renderList(items);
   }
 
-  searchInput.addEventListener('input', debounce(applyFilters, 250));
-  filterProvince.addEventListener('change', applyFilters);
-  filterType.addEventListener('change', applyFilters);
+  // wire events safely (elements may not exist in all variants)
+  if (searchInput) searchInput.addEventListener('input', debounce(applyFilters, 180));
+  if (filterProvince) filterProvince.addEventListener('change', applyFilters);
+  if (filterType) filterType.addEventListener('change', applyFilters);
 
-  // export CSV
-  document.getElementById('btnExportCsv').addEventListener('click',()=>{
-    const items = Array.from(listEl.querySelectorAll('.policy-card')).length ? null : null;
-    // easier: export all currently filtered items
-    const q = (searchInput.value||'').trim().toLowerCase();
-    const prov = filterProvince.value;
-    const type = filterType.value;
-    let itemsArr = policies.slice();
-    if(prov) itemsArr = itemsArr.filter(i=>i.provinceName===prov);
-    if(type) itemsArr = itemsArr.filter(i=>i.type===type);
-    if(q) itemsArr = itemsArr.filter(i=>(i.title||'').toLowerCase().includes(q) || (i.summary||'').toLowerCase().includes(q));
-    const header = ['provinceName','type','date','title','summary','url','source'];
-    const csv = [header.join(',')].concat(itemsArr.map(it=>header.map(h=>safeCSV(it[h])).join(','))).join('\n');
-    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='policies.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
-
-  function safeCSV(val){ if(val===undefined || val===null) return '""'; return '"'+String(val).replace(/"/g,'""')+'"'; }
-
-  // download full JSON
-  document.getElementById('btnDownloadJson').addEventListener('click', ()=>{
-    const blob = new Blob([JSON.stringify(policies,null,2)],{type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='policies.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
-
-  // open all / close all
-  document.getElementById('openAllBtn').addEventListener('click', ()=>{
-    const btn = document.getElementById('openAllBtn');
-    const open = btn.textContent.includes('展开');
-    document.querySelectorAll('.province-list details').forEach(d=>d.open = open);
-    btn.textContent = open ? '全部收起' : '全部展开';
-  });
-
-  // copy template helper
-  window.copyText = function(id){
-    const text = document.getElementById(id).textContent;
-    if(!navigator.clipboard){ alert('浏览器不支持剪贴板 API，请手动复制'); return; }
-    navigator.clipboard.writeText(text).then(()=>{ alert('已复制到剪贴板'); }, ()=>{ alert('复制失败'); });
+  function exportCsvVisible() {
+    const q = (searchInput && searchInput.value || '').trim().toLowerCase();
+    const prov = filterProvince && filterProvince.value;
+    const type = filterType && filterType.value;
+    let items = policies.slice();
+    if (prov) items = items.filter(i => i.provinceName === prov);
+    if (type) items = items.filter(i => i.type === type);
+    if (q) items = items.filter(i => [i.title, i.summary, i.provinceName, i.source].join(' ').toLowerCase().includes(q));
+    const rows = [
+      ['provinceName', 'type', 'date', 'title', 'summary', 'url', 'source'],
+      ...items.map(i => [i.provinceName, i.type, i.date, i.title, i.summary, i.url, i.source])
+    ];
+    const csv = rows.map(r => r.map(safeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'policies.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   }
 
-  // submit form demo
-  function handleSubmit(e){
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.target).entries());
-    document.getElementById('submitResult').textContent = '已生成演示材料包（本地演示）:\n' + JSON.stringify(data,null,2);
+  function safeCsv(value) {
+    const s = value == null ? '' : String(value);
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+
+  function downloadJson(payload) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'policies.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  window.downloadPolicy = function(serialized) {
+    try {
+      const item = JSON.parse(serialized);
+      const blob = new Blob([JSON.stringify(item, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = (item.title || 'policy') + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error(e); }
+  };
+
+  window.copyText = function(id) {
+    const el = document.getElementById(id);
+    const text = el ? el.textContent.trim() : '';
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => alert('已复制到剪贴板')).catch(() => alert('复制失败'));
+    } else {
+      alert('当前浏览器不支持复制');
+    }
+  };
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const result = document.getElementById('submitResult');
+    if (result) result.innerHTML = '<strong>已生成演示材料包（本地演示）</strong><pre>' + JSON.stringify(data, null, 2) + '</pre>';
   }
   window.handleSubmit = handleSubmit;
 
-  // debounce
-  function debounce(fn,wait){ let t; return function(...a){ clearTimeout(t); t = setTimeout(()=>fn.apply(this,a), wait); }; }
+  window.closeModal = function() {
+    const modal = document.getElementById('modal');
+    if (modal) modal.setAttribute('aria-hidden', 'true');
+  };
+
+  // attach export/download buttons if present
+  const btnExportCsv = document.getElementById('btnExportCsv');
+  if (btnExportCsv) btnExportCsv.addEventListener('click', exportCsvVisible);
+  const btnExportCsv2 = document.getElementById('btnExportCsv2');
+  if (btnExportCsv2) btnExportCsv2.addEventListener('click', exportCsvVisible);
+  const btnDownloadJson2 = document.getElementById('btnDownloadJson2');
+  if (btnDownloadJson2) btnDownloadJson2.addEventListener('click', () => downloadJson(policies));
+
+  const btnPack = document.getElementById('btnPack');
+  if (btnPack) btnPack.addEventListener('click', () => {
+    const text = `项目申报清单\n\n项目名称：\n项目所在地：\n项目类型：\n装机功率（MW）：\n储能容量（MWh）：\n申请单位：\n联系人：\n联系电话：\n邮箱：\n备注：`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'materials-package.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  const jumpToResults = document.getElementById('jumpToResults');
+  if (jumpToResults) jumpToResults.addEventListener('click', () => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }));
+  const jumpToTemplates = document.getElementById('jumpToTemplates');
+  if (jumpToTemplates) jumpToTemplates.addEventListener('click', () => document.getElementById('templates')?.scrollIntoView({ behavior: 'smooth' }));
+
+  // debounce helper
+  function debounce(fn, wait) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); }; }
+
+  // wire inputs
+  if (searchInput) searchInput.addEventListener('input', debounce(applyFilters, 180));
 
   // initial render
-  renderList(policies);
   applyFilters();
 
-  // keyboard: Esc to close modal
-  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+  if (statCount) statCount.textContent = String(policies.length || 0);
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') window.closeModal(); });
 
 })();
